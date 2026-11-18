@@ -31,6 +31,19 @@ class CatalogTest extends TestCase
         $this->getJson('/api/products?per_page=500')->assertUnprocessable();
     }
 
+    public function test_retail_price_filter_and_sort_apply_markup_only_to_oasis(): void
+    {
+        $oasis = Product::factory()->create(['provider' => 'oasis', 'price' => 1000.05]);
+        $arte = Product::factory()->create(['provider' => 'arte', 'price' => 1200]);
+
+        $this->getJson('/api/products?price_basis=retail&max_price=1300.06')
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $arte->id);
+        $this->getJson('/api/products?price_basis=retail&max_price=1300.07&sort=price_asc')
+            ->assertOk()->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.id', $arte->id)->assertJsonPath('data.1.id', $oasis->id)
+            ->assertJsonPath('data.1.price', 1000.05);
+    }
+
     public function test_inactive_products_cannot_be_viewed_or_requested(): void
     {
         $product = Product::factory()->create(['active' => false]);

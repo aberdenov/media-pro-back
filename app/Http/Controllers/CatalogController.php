@@ -16,6 +16,7 @@ class CatalogController extends Controller
             'q' => 'nullable|string|max:150', 'category' => 'nullable|string|in:'.implode(',', array_keys(Taxonomy::CATEGORIES)),
             'provider' => 'nullable|in:oasis,arte', 'in_stock' => 'nullable|boolean',
             'min_price' => 'nullable|numeric|min:0', 'max_price' => 'nullable|numeric|min:0',
+            'price_basis' => 'nullable|in:retail',
             'sort' => 'nullable|in:recommended,price_asc,price_desc,newest',
             'page' => 'nullable|integer|min:1|max:100000', 'per_page' => 'nullable|integer|min:1|max:48',
         ]);
@@ -35,15 +36,18 @@ class CatalogController extends Controller
         if (! empty($data['in_stock'])) {
             $query->where('stock', '>', 0);
         }
+        $priceExpression = ($data['price_basis'] ?? null) === 'retail'
+            ? "CASE WHEN provider = 'oasis' THEN ROUND(ROUND(price * 100, 0) * 13 / 10.0, 0) / 100.0 ELSE price END"
+            : 'price';
         if (isset($data['min_price'])) {
-            $query->where('price', '>=', $data['min_price']);
+            $query->whereRaw("($priceExpression) >= (? + 0)", [(float) $data['min_price']]);
         }
         if (isset($data['max_price'])) {
-            $query->where('price', '<=', $data['max_price']);
+            $query->whereRaw("($priceExpression) <= (? + 0)", [(float) $data['max_price']]);
         }
         match ($data['sort'] ?? 'recommended') {
-            'price_asc' => $query->orderByRaw('price IS NULL')->orderBy('price'),
-            'price_desc' => $query->orderByRaw('price IS NULL')->orderByDesc('price'),
+            'price_asc' => $query->orderByRaw('price IS NULL')->orderByRaw("$priceExpression ASC"),
+            'price_desc' => $query->orderByRaw('price IS NULL')->orderByRaw("$priceExpression DESC"),
             'newest' => $query->orderByDesc('id'),
             default => $query->orderByRaw('CASE WHEN stock > 0 THEN 0 ELSE 1 END')->orderByRaw('CASE WHEN price >= 1000 THEN 0 ELSE 1 END'),
         };
