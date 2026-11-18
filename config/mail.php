@@ -16,6 +16,8 @@ return [
 
     'default' => env('MAIL_MAILER', 'log'),
 
+    'inquiry_recipient' => env('MAIL_INQUIRY_RECIPIENT'),
+
     /*
     |--------------------------------------------------------------------------
     | Mailer Configurations

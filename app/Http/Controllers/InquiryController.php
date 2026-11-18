@@ -5,8 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Mail\Message;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Throwable;
 
 class InquiryController extends Controller
 {
@@ -53,6 +57,45 @@ class InquiryController extends Controller
             'consented_at' => now(), 'created_at' => now(), 'updated_at' => now(),
         ]);
 
+        $this->sendNotification($id, $data, $items);
+
         return response()->json(['id' => $id, 'message' => 'Заявка сохранена. Мы свяжемся с вами, чтобы уточнить детали.'], 201);
+    }
+
+    private function sendNotification(string $id, array $data, array $items): void
+    {
+        $recipient = config('mail.inquiry_recipient');
+        if (! $recipient) {
+            return;
+        }
+
+        $number = strtoupper(substr($id, 0, 8));
+        $lines = [
+            "Заявка MEDIAPRO №$number",
+            "Имя: {$data['name']}",
+            "Телефон: {$data['phone']}",
+            'Email: '.($data['email'] ?? '—'),
+            'Компания: '.($data['company'] ?? '—'),
+            'Комментарий: '.($data['message'] ?? '—'),
+            '',
+            $items ? 'Товары:' : 'Заявка без товаров.',
+        ];
+        foreach ($items as $item) {
+            $lines[] = "{$item['name']} (арт. {$item['article']}, {$item['provider']}) — {$item['quantity']} шт.";
+        }
+
+        try {
+            Mail::raw(implode("\n", $lines), function (Message $message) use ($recipient, $number, $data): void {
+                $message->to($recipient)->subject("Новая заявка MEDIAPRO №$number");
+                if (! empty($data['email'])) {
+                    $message->replyTo($data['email']);
+                }
+            });
+        } catch (Throwable $exception) {
+            Log::warning('Inquiry email delivery failed.', [
+                'inquiry_id' => $id,
+                'error_type' => $exception::class,
+            ]);
+        }
     }
 }

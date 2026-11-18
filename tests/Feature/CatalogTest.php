@@ -6,6 +6,8 @@ use App\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use RuntimeException;
 use Tests\TestCase;
 
 class CatalogTest extends TestCase
@@ -46,6 +48,36 @@ class CatalogTest extends TestCase
         $stored = DB::table('inquiries')->where('id', $response->json('id'))->first();
         $this->assertEquals(5000, json_decode($stored->items, true)[0]['price']);
         $this->assertDatabaseCount('inquiries', 1);
+    }
+
+    public function test_inquiry_email_includes_contacts_and_requested_products(): void
+    {
+        config(['mail.inquiry_recipient' => 'damir@mediapro.kz']);
+        $product = Product::factory()->create(['article' => 'MP-123']);
+        $payload = $this->inquiry([['id' => $product->id, 'quantity' => 25]]);
+        $response = $this->postJson('/api/inquiries', [
+            ...$payload, 'email' => 'client@example.com', 'message' => 'Нужно нанесение логотипа',
+        ])->assertCreated();
+
+        $messages = Mail::mailer()->getSymfonyTransport()->messages();
+        $this->assertCount(1, $messages);
+        $email = $messages->first()->getOriginalMessage();
+        $this->assertSame('damir@mediapro.kz', $email->getTo()[0]->getAddress());
+        $this->assertSame('client@example.com', $email->getReplyTo()[0]->getAddress());
+        $this->assertStringContainsString(strtoupper(substr($response->json('id'), 0, 8)), $email->getSubject());
+        $this->assertStringContainsString($payload['phone'], $email->getTextBody());
+        $this->assertStringContainsString('Нужно нанесение логотипа', $email->getTextBody());
+        $this->assertStringContainsString('MP-123, oasis) — 25 шт.', $email->getTextBody());
+    }
+
+    public function test_inquiry_is_saved_when_email_delivery_fails(): void
+    {
+        config(['mail.inquiry_recipient' => 'damir@mediapro.kz']);
+        Mail::shouldReceive('raw')->once()->andThrow(new RuntimeException('Simulated mail failure'));
+
+        $response = $this->postJson('/api/inquiries', $this->inquiry([]))->assertCreated();
+
+        $this->assertDatabaseHas('inquiries', ['id' => $response->json('id')]);
     }
 
     public function test_cached_catalog_data_survives_database_serialization(): void
