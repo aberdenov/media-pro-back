@@ -21,7 +21,7 @@ class SupplierSyncTest extends TestCase
         config(['catalog.oasis.key' => 'test-key', 'catalog.oasis.request_interval_ms' => 0]);
         Http::preventStrayRequests();
         Http::fake(['api.oasiscatalog.com/*' => Http::response([[
-            'id' => 'oasis-1', 'name' => 'Кружка', 'article' => 'ABC', 'price' => '3000',
+            'id' => 'oasis-1', 'name' => 'Кружка', 'article' => 'ABC', 'price' => '3987.41', 'discount_price' => '1993.70',
             'total_stock' => 50, 'images' => [['big' => 'https://example.com/mug.jpg']],
         ]])]);
         $missing = Product::factory()->create();
@@ -31,8 +31,8 @@ class SupplierSyncTest extends TestCase
         $this->assertDatabaseCount('products', 3);
         $this->assertFalse($missing->fresh()->active);
         $this->assertTrue($arte->fresh()->active);
-        $this->assertDatabaseHas('products', ['external_id' => 'oasis-1', 'currency' => 'KZT', 'price' => 3000]);
-        Http::assertSent(fn ($request) => $request['currency'] === 'kzt' && $request->hasHeader('Authorization', 'Basic '.base64_encode('test-key:')));
+        $this->assertDatabaseHas('products', ['external_id' => 'oasis-1', 'currency' => 'KZT', 'price' => 1993.70]);
+        Http::assertSent(fn ($request) => $request['currency'] === 'kzt' && $request['fieldset'] === 'full' && $request->hasHeader('Authorization', 'Basic '.base64_encode('test-key:')));
     }
 
     public function test_partial_connection_check_does_not_deactivate_existing_products(): void
@@ -43,6 +43,7 @@ class SupplierSyncTest extends TestCase
         $this->artisan('catalog:sync oasis --limit=1')->assertSuccessful();
         $this->assertTrue($existing->fresh()->active);
         $this->assertDatabaseHas('sync_runs', ['provider' => 'oasis', 'status' => 'partial']);
+        $this->assertDatabaseHas('products', ['provider' => 'oasis', 'external_id' => 'new', 'price' => null]);
     }
 
     public function test_provider_failure_preserves_existing_catalog(): void

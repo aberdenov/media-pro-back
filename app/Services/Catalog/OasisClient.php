@@ -24,7 +24,7 @@ class OasisClient
                 ->connectTimeout(20)->timeout(90)->retry(3, 2500)
                 ->get(config('catalog.oasis.url').'/v4/products', [
                     'limit' => $limit, 'offset' => $offset, 'currency' => config('catalog.oasis.currency'),
-                    'format' => 'json',
+                    'format' => 'json', 'fieldset' => 'full',
                 ])->throw();
             $rows = $response->json();
             if (! is_array($rows) || ! array_is_list($rows)) {
@@ -57,7 +57,7 @@ class OasisClient
             'description' => Taxonomy::text($row['description'] ?? ''),
             'category' => Taxonomy::detect($row['name'].' '.($row['full_name'] ?? '')),
             'brand' => Taxonomy::text($row['brand'] ?? ''),
-            'price' => isset($row['price']) && is_numeric($row['price']) ? (float) $row['price'] : null,
+            'price' => is_numeric($row['discount_price'] ?? null) ? (float) $row['discount_price'] : null,
             'currency' => 'KZT',
             'stock' => isset($row['total_stock']) ? max(0, (int) $row['total_stock']) : null,
             'images' => $images,
