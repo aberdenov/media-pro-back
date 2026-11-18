@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
+use Symfony\Component\Mailer\Transport\Smtp\Stream\SocketStream;
 use Throwable;
 
 class InquiryController extends Controller
@@ -85,6 +87,19 @@ class InquiryController extends Controller
         }
 
         try {
+            $tlsPeerName = config('mail.mailers.smtp.tls_peer_name');
+            if ($tlsPeerName && config('mail.default') === 'smtp') {
+                $transport = Mail::mailer('smtp')->getSymfonyTransport();
+                $stream = $transport instanceof EsmtpTransport ? $transport->getStream() : null;
+                if ($stream instanceof SocketStream) {
+                    $options = $stream->getStreamOptions();
+                    $options['ssl']['peer_name'] = $tlsPeerName;
+                    $options['ssl']['verify_peer'] = true;
+                    $options['ssl']['verify_peer_name'] = true;
+                    $stream->setStreamOptions($options);
+                }
+            }
+
             Mail::raw(implode("\n", $lines), function (Message $message) use ($recipient, $number, $data): void {
                 $message->to($recipient)->subject("Новая заявка MEDIAPRO №$number");
                 if (! empty($data['email'])) {
@@ -95,6 +110,7 @@ class InquiryController extends Controller
             Log::warning('Inquiry email delivery failed.', [
                 'inquiry_id' => $id,
                 'error_type' => $exception::class,
+                'error_code' => $exception->getCode(),
             ]);
         }
     }
